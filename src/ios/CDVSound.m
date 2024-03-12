@@ -481,6 +481,7 @@ BOOL keepAvAudioSessionAlwaysActive = NO;
                         audioFile.player.rate = [audioFile.rate floatValue];
                     }
 
+                    audioFile.player.meteringEnabled = YES; //KL-ADDED
                     [audioFile.player play];
                     duration = round(audioFile.player.duration * 1000) / 1000;
                 }
@@ -558,8 +559,10 @@ BOOL keepAvAudioSessionAlwaysActive = NO;
     } else {
         audioFile.player.mediaId = mediaId;
         audioFile.player.delegate = self;
-        if (avPlayer == nil)
+        if (avPlayer == nil) {
+            audioFile.player.meteringEnabled = YES; //KL-ADDED (PLUS BRACES)
             bError = ![audioFile.player prepareToPlay];
+        }
     }
     return bError;
 }
@@ -968,7 +971,7 @@ BOOL keepAvAudioSessionAlwaysActive = NO;
 #pragma unused(mediaId)
     CDVAudioFile* audioFile = [[self soundCache] objectForKey:mediaId];
     float amplitude = 0; // The linear 0.0 .. 1.0 value
-
+    /*  KL-REMOVED:
     if ((audioFile != nil) && (audioFile.recorder != nil) && [audioFile.recorder isRecording]) {
         [audioFile.recorder updateMeters];
         float minDecibels = -60.0f; // Or use -60dB, which I measured in a silent room.
@@ -983,6 +986,31 @@ BOOL keepAvAudioSessionAlwaysActive = NO;
             float inverseAmpRange = 1.0f / (1.0f - minAmp);
             float amp             = powf(10.0f, 0.05f * decibels);
             float adjAmp          = (amp - minAmp) * inverseAmpRange;
+            amplitude = powf(adjAmp, 1.0f / root);
+        }
+    }
+    */
+    //KL-ADDED:
+    if (audioFile != nil) {
+        float minDecibels = -58.0f;
+        float decibels = minDecibels;
+
+        if (audioFile.recorder != nil && [audioFile.recorder isRecording]) {
+            [audioFile.recorder updateMeters];
+            decibels = [audioFile.recorder averagePowerForChannel:0];
+        } else if (audioFile.player != nil && audioFile.player.isPlaying) {
+            [audioFile.player updateMeters];
+            decibels = [audioFile.player averagePowerForChannel:0];
+        }
+
+        if (decibels <= minDecibels) { amplitude = 0.0f; }
+        else if (decibels >= 0.0f) { amplitude = 1.0f; }
+        else {
+            float root = 2.0f;
+            float minAmp = powf(10.0f, 0.05f * minDecibels);
+            float inverseAmpRange = 1.0f / (1.0f - minAmp);
+            float amp = powf(10.0f, 0.05f * decibels);
+            float adjAmp = (amp - minAmp) * inverseAmpRange;
             amplitude = powf(adjAmp, 1.0f / root);
         }
     }
